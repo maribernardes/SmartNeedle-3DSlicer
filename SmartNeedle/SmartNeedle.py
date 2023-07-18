@@ -182,7 +182,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.zTransformSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.updateParameterNodeFromGUI)
     
     # Connect Qt widgets to event calls
-    self.zTransformSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onZTranformChange)
+    # self.zTransformSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onZTranformChange)
     self.startButton.connect('clicked(bool)', self.startServer)
     self.stopButton.connect('clicked(bool)', self.stopServer)
     self.sendButton.connect('clicked(bool)', self.sendPoints)
@@ -227,7 +227,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   # Parameter node stores all user choices in parameter values, node selections, etc.
   # so that when the scene is saved and reloaded, these settings are restored.
   def initializeParameterNode(self):
-    print('initializeParameterNode')
     # Load default parameters in logic module
     self.setParameterNode(self.logic.getParameterNode())
     # Select default input nodes if nothing is selected yet to save a few clicks for the user
@@ -240,7 +239,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   # Set and observe parameter node.
   # Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
   def setParameterNode(self, inputParameterNode):
-    print('setParameterNode')
     if inputParameterNode:
       self.logic.setDefaultParameters(inputParameterNode)
     # Unobserve previously selected parameter node and add an observer to the newly selected.
@@ -257,7 +255,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   # This method is called whenever parameter node is changed.
   # The module GUI is updated to show the current state of the parameter node.
   def updateGUIFromParameterNode(self, caller=None, event=None):
-    print('updateGUIFromParameterNode')
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
     # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
@@ -273,7 +270,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   # This method is called when the user makes any change in the GUI.
   # The changes are saved into the parameter node (so that they are restored when the scene is saved and loaded).
   def updateParameterNodeFromGUI(self, caller=None, event=None):
-    print('updateParameterNodeFromGUI')
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
     # Modify all properties in a single batch
@@ -283,10 +279,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self._parameterNode.SetNodeReferenceID('ZTransform', self.zTransformSelector.currentNodeID)
     # All paramenter_nodes updates are done
     self._parameterNode.EndModify(wasModified)
-  
-  # Called when a new zTransform is selected
-  def onZTranformChange(self):
-    print('Updated ZTransform')
     
   # Called when the Point List is updated
   def onPointListChanged(self):    
@@ -300,16 +292,15 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 # Callback function to check if the node exists and call the update function
   def onNeedleShapeChange(self, caller=None, event=None):
     # Check if Registration transform is selected
-    if (self.zTransformSelector.currentNode() is not None):
+    if (self.zTransformSelector.currentNode() is not None):      
+      self.logic.updateNeedleShape(self.zTransformSelector.currentNode())
       # Update header info
       (timestamp, package_number, num_points, frame_id) = self.logic.getCurrentHeader()    
-      print('*** Received Needle Shape ***')
-      print('Timestamp:', timestamp)
-      print('Package Number:', package_number)
-      print('Number of Points:', num_points)
-      print('Frame ID:', frame_id)
-      zTransformNode = self.zTransformSelector.currentNode()
-      self.logic.updateNeedleShapeCurve(zTransformNode)
+      self.timeStampTextbox.setText(timestamp)
+      self.numberPointsTextbox.setText(num_points)
+      tipCoordinates = self.logic.getCurrentTipCoordinates()
+      if tipCoordinates is not None:
+        self.needleTipTextbox.setText(tipCoordinates)
     
   # Update GUI buttons, markupWidget and connection statusLabel
   def updateGUI(self):
@@ -320,9 +311,9 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     zFrameSelected = (self.zTransformSelector.currentNode() is not None)
     pointsSelected = (self.logic.getNumberOfPoints(self.pointListSelector.currentNode()) == 2)
     # Update buttons accordingly
-    self.startButton.enabled = serverDefined and not serverActive
+    self.startButton.enabled = zFrameSelected and serverDefined and not serverActive
     self.stopButton.enabled = serverActive
-    self.sendButton.enabled = pointsSelected and zFrameSelected #and serverActive
+    self.sendButton.enabled = pointsSelected and zFrameSelected and serverActive
     # Update markup widget accordingly
     self.pointListSelector.placeActive(not pointsSelected)
     # Update connection status label
@@ -374,71 +365,61 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
   ### Logic setup ###################################################################
   def initializeNodes(self):  
     # Create OpenIGTLink Server Nodes and initialize logic variables
-    try:
-      self.serverNode = slicer.util.getNode('IGTLSmartNeedleServer')
-      self.serverNode.Stop()
-    except:
+    self.serverNode = slicer.util.getFirstNodeByName('IGTLSmartNeedleServer')
+    if self.serverNode is None or self.serverNode.GetClassName() != 'vtkMRMLIGTLConnectorNode':
       self.serverNode = slicer.vtkMRMLIGTLConnectorNode()
       slicer.mrmlScene.AddNode(self.serverNode)
-      self.serverNode.SetName('IGTLSmartNeedleServer')
+      self.serverNode.SetName('IGTLSmartNeedleServer')      
+    else:
+      self.serverNode.Stop()
     # Create Transform nodes
-    try:
-      self.worldToZFrameTransformNode = slicer.util.getNode('WorldToZFrameTransform')
-    except:
-      self.worldToZFrameTransformNode = slicer.vtkMRMLTransformNode()
+    self.worldToZFrameTransformNode = slicer.util.getFirstNodeByName('WorldToZFrameTransform')
+    if self.worldToZFrameTransformNode is None or self.worldToZFrameTransformNode.GetClassName() != 'vtkMRMLLinearTransformNode':
+      self.worldToZFrameTransformNode = slicer.vtkMRMLLinearTransformNode()
       slicer.mrmlScene.AddNode(self.worldToZFrameTransformNode)
       self.worldToZFrameTransformNode.SetName('WorldToZFrameTransform')
     # Create PointList node for planning
-    try:
-      self.pointListNode = slicer.util.getNode('Planning')
-    except:
-      self.pointListNode = slicer.vtkMRMLMarkupsFiducialNode()
-      slicer.mrmlScene.AddNode(self.pointListNode)
-      self.pointListNode.SetName('Planning')
+    self.pointListNode = slicer.util.getFirstNodeByName('Planning')
+    if self.pointListNode is None or self.pointListNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
+        self.pointListNode = slicer.vtkMRMLMarkupsFiducialNode()
+        slicer.mrmlScene.AddNode(self.pointListNode)
+        self.pointListNode.SetName('Planning')
     # Create PointListZ node for planning
-    try:
-      self.zFramePointListNode = slicer.util.getNode('PlanningZ')
-    except:
+    self.zFramePointListNode = slicer.util.getFirstNodeByName('PlanningZ')
+    if self.zFramePointListNode is None or self.zFramePointListNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
       self.zFramePointListNode = slicer.vtkMRMLMarkupsFiducialNode()
       slicer.mrmlScene.AddNode(self.zFramePointListNode)
       self.zFramePointListNode.SetName('PlanningZ')
     # Create NeedleShape message header
-    try:
-      self.needleShapeHeaderNode = slicer.util.getNode('NeedleShapeHeader')
-    except:
+    self.needleShapeHeaderNode = slicer.util.getFirstNodeByName('NeedleShapeHeader')
+    if self.needleShapeHeaderNode is None or self.needleShapeHeaderNode.GetClassName() != 'vtkMRMLTextNode':
       self.needleShapeHeaderNode = slicer.vtkMRMLTextNode()
       slicer.mrmlScene.AddNode(self.needleShapeHeaderNode)
       self.needleShapeHeaderNode.SetName('NeedleShapeHeader')
     # Create the NeedleShape points node
-    try:
-      self.needleShapePointsNode = slicer.util.getNode('NeedleShape')
-    except:
+    self.needleShapePointsNode = slicer.util.getFirstNodeByName('NeedleShape')
+    if self.needleShapePointsNode is None or self.needleShapePointsNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
       self.needleShapePointsNode = slicer.vtkMRMLMarkupsFiducialNode()
       slicer.mrmlScene.AddNode(self.needleShapePointsNode)
       self.needleShapePointsNode.SetName('NeedleShape')
     # Create the NeedleShapeZ points node
-    try:
-      self.zFrameNeedleShapePointsNode = slicer.util.getNode('NeedleShapeZ')
-    except:
+    self.zFrameNeedleShapePointsNode = slicer.util.getFirstNodeByName('NeedleShapeZ')
+    if self.zFrameNeedleShapePointsNode is None or self.zFrameNeedleShapePointsNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
       self.zFrameNeedleShapePointsNode = slicer.vtkMRMLMarkupsFiducialNode()
       slicer.mrmlScene.AddNode(self.zFrameNeedleShapePointsNode)
       self.zFrameNeedleShapePointsNode.SetName('NeedleShapeZ')
     # Create the Needle Model node
-    try:
-      self.needleModelNode = slicer.util.getNode('NeedleModel')
-    except:
+    self.needleModelNode = slicer.util.getFirstNodeByName('NeedleModel')
+    if self.needleModelNode is None or self.needleModelNode.GetClassName() != 'vtkMRMLModelNode':
       self.needleModelNode = slicer.vtkMRMLModelNode()
       slicer.mrmlScene.AddNode(self.needleModelNode)
       self.needleModelNode.SetName('NeedleModel')   
       self.needleModelNode.SetDisplayVisibility(True)
-      displayNode = self.needleModelNode.GetDisplayNode()
-      if displayNode is None:
-          displayNode = slicer.vtkMRMLModelDisplayNode()
-          # displayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-          self.needleModelNode.SetAndObserveDisplayNodeID(displayNode.GetID())
-      # displayNode.SetColor(0.678, 0.847, 0.902)  # Light blue color
-      # displayNode.Modified()
-      
+    # Check for Needle Model display node
+    displayNode = self.needleModelNode.GetDisplayNode()
+    if displayNode is None:
+        displayNode = slicer.vtkMRMLModelDisplayNode()
+        self.needleModelNode.SetAndObserveDisplayNodeID(displayNode.GetID())
     # Get CurveMaker module logic
     self.curveMaker.SourceNode = self.needleShapePointsNode
     self.curveMaker.DestinationNode = self.needleModelNode
@@ -515,6 +496,16 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     frame_id = parts[3]
     return (timestamp, package_number, num_points, frame_id) 
   
+  # Return coordinates of the last point in array (tip world coordinates)
+  def getCurrentTipCoordinates(self):
+    if self.needleShapePointsNode is None:
+      return None
+    lastControlPointIndex = self.needleShapePointsNode.GetNumberOfControlPoints() - 1
+    if lastControlPointIndex < 0:
+      return None
+    else:
+        return self.needleShapePointsNode.GetNthControlPointPosition(lastControlPointIndex)
+    
   # Send planned points through IGTLink server
   def sendPlannedPoints(self, pointListNode, zTransformNode):
     if zTransformNode is None:
@@ -536,15 +527,16 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     return True
 
   # Update needle model from NeedleShape POINT_ARRAY message
-  def updateNeedleShapeCurve(self, zTransformNode):
+  def updateNeedleShape(self, zTransformNode):
     if zTransformNode is None:
       print('Select a ZTransform first')
       return False
+    # Make a copy of NeedleShape Z points 
+    self.needleShapePointsNode.CopyContent(self.zFrameNeedleShapePointsNode)
+    # Apply zFrame to World transform to needle shape points
+    self.needleShapePointsNode.SetAndObserveTransformNodeID(zTransformNode.GetID())
+    self.needleShapePointsNode.HardenTransform()
+    # Update curve if more than 2 points
     if self.zFrameNeedleShapePointsNode.GetNumberOfControlPoints() >= 2:
-      # Make a copy of NeedleShape Z points 
-      self.needleShapePointsNode.CopyContent(self.zFrameNeedleShapePointsNode)
-      # Apply zFrame to World transform to needle shape points
-      self.needleShapePointsNode.SetAndObserveTransformNodeID(zTransformNode.GetID())
-      self.needleShapePointsNode.HardenTransform()
       self.curveMaker.updateCurve()
       return True

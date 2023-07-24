@@ -6,12 +6,10 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from PythonQt import QtCore, QtGui
 
-import SimpleITK as sitk
-import sitkUtils
+# import SimpleITK as sitk
+# import sitkUtils
 import numpy as np
 import CurveMaker
-from skimage.restoration import unwrap_phase
-
 
 class SmartNeedle(ScriptedLoadableModule):
 

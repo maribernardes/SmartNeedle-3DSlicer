@@ -137,7 +137,13 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.timeStampTextbox.toolTip = 'Timestamp from last shape measurement'
     sensingFormLayout.addRow('Needle shape timestamp:', self.timeStampTextbox)
 
-    self.numberPointsTextbox = qt.QLineEdit('')
+    self.packageNumberTextbox = qt.QLineEdit('---')
+    self.packageNumberTextbox.setReadOnly(True)
+    self.packageNumberTextbox.setStyleSheet('background-color: transparent; border: no border;')
+    self.packageNumberTextbox.toolTip = 'Package number'
+    sensingFormLayout.addRow('Package number:', self.packageNumberTextbox)
+
+    self.numberPointsTextbox = qt.QLineEdit('---')
     self.numberPointsTextbox.setReadOnly(True)
     self.numberPointsTextbox.setStyleSheet('background-color: transparent; border: no border;')
     self.numberPointsTextbox.toolTip = 'Number of points in needle shape'
@@ -295,6 +301,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # Update header info
       (timestamp, package_number, num_points, frame_id) = self.logic.getCurrentHeader()    
       self.timeStampTextbox.setText(timestamp)
+      self.packageNumberTextbox.setText(package_number)
       self.numberPointsTextbox.setText(num_points)
       tipCoordinates = self.logic.getCurrentTipCoordinates()
       if tipCoordinates is not None:
@@ -485,6 +492,7 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
   # Extract information from NeedleShapeHeader STRING message
   def getCurrentHeader(self):
     headerText = self.needleShapeHeaderNode.GetText()
+    print(headerText)
     # Split the text using the ';' delimiter
     parts = headerText.split(';')
     # Extract the individual values and assign them to separate variables

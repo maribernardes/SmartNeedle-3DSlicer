@@ -53,7 +53,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     ##                                ##
     ####################################
 
-    ## Server collapsible button            
+    ## Connection collapsible button            
     ####################################
     connectionCollapsibleButton = ctk.ctkCollapsibleButton()
     connectionCollapsibleButton.text = 'Robot connection'
@@ -73,26 +73,37 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.zTransformSelector.setToolTip('Select the ZFrame Transform')
     connectionLayout.addRow('ZTransform:', self.zTransformSelector)
    
-    # Port (No need for IP - Server)
+    # IP/Port
+    connectionHBoxLayout = qt.QHBoxLayout()
+
+    self.ipTextbox = qt.QLineEdit('172.23.145.130')
+    self.ipTextbox.setReadOnly(False)
+    self.ipTextbox.setMaximumWidth(250)
+    connectionHBoxLayout.addWidget(qt.QLabel('Hostname:  '))
+    connectionHBoxLayout.addWidget(self.ipTextbox)
+
     self.portTextbox = qt.QLineEdit('18944')
     self.portTextbox.setReadOnly(False)
     self.portTextbox.setMaximumWidth(250)
-    connectionLayout.addRow('Port:', self.portTextbox)
+    connectionHBoxLayout.addWidget(qt.QLabel('     Port:'))
+    connectionHBoxLayout.addWidget(self.portTextbox)
+
+    connectionLayout.addRow(connectionHBoxLayout)
      
     # Start/Stop buttons 
     buttonsHBoxLayout = qt.QHBoxLayout()    
-    self.startButton = qt.QPushButton('Start server')
-    self.startButton.toolTip = 'Start OpenIGTLink server'
+    self.startButton = qt.QPushButton('Start client')
+    self.startButton.toolTip = 'Start OpenIGTLink client'
     self.startButton.enabled = False
     buttonsHBoxLayout.addWidget(self.startButton)
-    self.stopButton = qt.QPushButton('Stop server')
-    self.stopButton.toolTip = 'Stop the needle tracking'
+    self.stopButton = qt.QPushButton('Stop client')
+    self.stopButton.toolTip = 'Stop the OpenIGTLink client'
     self.stopButton.enabled = False    
     buttonsHBoxLayout.addWidget(self.stopButton)
     connectionLayout.addRow('', buttonsHBoxLayout)
     
-    # Server status
-    self.statusLabel = qt.QLineEdit('<IGTLink Server Status>')
+    # Connection status
+    self.statusLabel = qt.QLineEdit('<IGTLink Connection Status>')
     self.statusLabel.setReadOnly(True)
     connectionLayout.addRow('', self.statusLabel)
     
@@ -109,11 +120,12 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     planningFormLayout.addLayout(markupsLayout)
     self.pointListSelector = slicer.qSlicerSimpleMarkupsWidget()    
     self.pointListSelector.setMRMLScene(slicer.mrmlScene)
-    self.pointListSelector.markupsPlaceWidget().setPlaceMultipleMarkups(slicer.qSlicerMarkupsPlaceWidget().ForcePlaceMultipleMarkups)
-    self.pointListSelector.defaultNodeColor = qt.QColor(170,0,0)
     self.pointListSelector.setNodeSelectorVisible(False)
+    self.pointListSelector.markupsPlaceWidget().setPlaceMultipleMarkups(True)
+    self.pointListSelector.defaultNodeColor = qt.QColor(170,0,0)
     self.pointListSelector.tableWidget().show()
     self.pointListSelector.toolTip = 'Select 2 points: ENTRY and TARGET'
+    # self.pointListSelector.markupsPlaceWidget().setPlaceModePersistency(True)
     markupsLayout.addRow('Planned points:', self.pointListSelector)
     
     # SendPlan button 
@@ -172,23 +184,24 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.addObserver(slicer.mrmlScene, slicer.vtkMRMLScene.NodeAddedEvent, self.nodeAddedCallback)
 
     # These connections ensure that we update server status when IGTLConnectorNode changes
-    self.addObserver(self.logic.serverNode, slicer.vtkMRMLIGTLConnectorNode.ActivatedEvent, self.onConnectionStatusChange)
-    self.addObserver(self.logic.serverNode, slicer.vtkMRMLIGTLConnectorNode.DeactivatedEvent, self.onConnectionStatusChange)
-    self.addObserver(self.logic.serverNode, slicer.vtkMRMLIGTLConnectorNode.ConnectedEvent, self.onConnectionStatusChange)
-    self.addObserver(self.logic.serverNode, slicer.vtkMRMLIGTLConnectorNode.DisconnectedEvent, self.onConnectionStatusChange)
+    self.addObserver(self.logic.clientNode, slicer.vtkMRMLIGTLConnectorNode.ActivatedEvent, self.onConnectionStatusChange)
+    self.addObserver(self.logic.clientNode, slicer.vtkMRMLIGTLConnectorNode.DeactivatedEvent, self.onConnectionStatusChange)
+    self.addObserver(self.logic.clientNode, slicer.vtkMRMLIGTLConnectorNode.ConnectedEvent, self.onConnectionStatusChange)
+    self.addObserver(self.logic.clientNode, slicer.vtkMRMLIGTLConnectorNode.DisconnectedEvent, self.onConnectionStatusChange)
     
     # This connection updates the needle shape when a new message comes
     self.addObserver(self.logic.needleShapeHeaderNode, slicer.vtkMRMLTextNode.TextModifiedEvent, self.onNeedleShapeChange)
         
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
+    self.ipTextbox.connect('textChanged', self.updateParameterNodeFromGUI)
     self.portTextbox.connect('textChanged', self.updateParameterNodeFromGUI)
     self.zTransformSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.updateParameterNodeFromGUI)
     
     # Connect Qt widgets to event calls
     # self.zTransformSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onZTranformChange)
-    self.startButton.connect('clicked(bool)', self.startServer)
-    self.stopButton.connect('clicked(bool)', self.stopServer)
+    self.startButton.connect('clicked(bool)', self.startConnection)
+    self.stopButton.connect('clicked(bool)', self.stopConnection)
     self.sendButton.connect('clicked(bool)', self.sendPoints)
     self.pointListSelector.connect('updateFinished()', self.onPointListChanged)
 
@@ -264,6 +277,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
     self._updatingGUIFromParameterNode = True
     # Update node selectors and input boxes and sliders
+    self.ipTextbox.setText(self._parameterNode.GetParameter('IP'))
     self.portTextbox.setText(self._parameterNode.GetParameter('Port'))
     self.zTransformSelector.setCurrentNode(self._parameterNode.GetNodeReference('ZTransform'))
     self.pointListSelector.setCurrentNode(self._parameterNode.GetNodeReference('Planning'))
@@ -279,6 +293,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Modify all properties in a single batch
     wasModified = self._parameterNode.StartModify()  
     # Update paramenters_nodes
+    self._parameterNode.SetParameter('IP', self.ipTextbox.text.strip())
     self._parameterNode.SetParameter('Port', self.portTextbox.text.strip())
     self._parameterNode.SetNodeReferenceID('ZTransform', self.zTransformSelector.currentNodeID)
     # All paramenter_nodes updates are done
@@ -293,20 +308,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onConnectionStatusChange(self, caller=None, event=None):
     self.updateGUI()
 
-# Callback function to check if the node exists and call the update function
-  def onNeedleShapeChange(self, caller=None, event=None):
-    # Check if Registration transform is selected
-    if (self.zTransformSelector.currentNode() is not None):      
-      self.logic.updateNeedleShape(self.zTransformSelector.currentNode())
-      # Update header info
-      (timestamp, package_number, num_points, frame_id) = self.logic.getCurrentHeader()    
-      self.timeStampTextbox.setText(timestamp)
-      self.packageNumberTextbox.setText(package_number)
-      self.numberPointsTextbox.setText(num_points)
-      tipCoordinates = self.logic.getCurrentTipCoordinates()
-      if tipCoordinates is not None:
-        self.needleTipTextbox.setText(tipCoordinates)
-    
   # Update GUI buttons, markupWidget and connection statusLabel
   def updateGUI(self):
     # Check status
@@ -324,28 +325,29 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Update connection status label
     if (connectionStatus == slicer.vtkMRMLIGTLConnectorNode.StateOff):               # 0 - OFF
       self.statusLabel.setStyleSheet('background-color: pink; border: 1px solid black;')
-      self.statusLabel.setText('Server inactive')
+      self.statusLabel.setText('Connection inactive')
     elif (connectionStatus == slicer.vtkMRMLIGTLConnectorNode.StateWaitConnection):  # 1 - WAIT
       self.statusLabel.setStyleSheet('background-color: lightyellow; border: 1px solid black;')
-      self.statusLabel.setText('Waiting for client')
+      self.statusLabel.setText('Waiting for server')
     elif (connectionStatus == slicer.vtkMRMLIGTLConnectorNode.StateConnected):       # 2 - ON
       self.statusLabel.setStyleSheet('background-color: lightgreen; border: 1px solid black;')
-      self.statusLabel.setText('Connected to client... Ready to send/receive!')
+      self.statusLabel.setText('Connected to server... Ready to send/receive!')
     else:                                                                                 # ANY OTHER STATE
       self.statusLabel.setStyleSheet('background-color: pink; border: 1px solid black;')
       self.statusLabel.setText('Error with OpenIGTLink server node')
 
-  def startServer(self):
-    print('UI: startServer()')
-    # Get Server Port value
-    serverPort = self.portTextbox.text.strip()
+  def startConnection(self):
+    print('UI: startConnection()')
+    # Get Client IP/Port values
+    ip = self.ipTextbox.text.strip()
+    port = self.portTextbox.text.strip()
     # Start server
-    self.logic.activateServer(serverPort)
+    self.logic.activateConnection(ip, port)
   
-  def stopServer(self):
-    print('UI: stopTracking()')
+  def stopConnection(self):
+    print('UI: stopConnection()')
     # Stop server
-    self.logic.deactivateServer()
+    self.logic.deactivateConnection()
     
   def sendPoints(self):
     print('UI: sendPoints()')
@@ -353,6 +355,20 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     zTransformNode = self.zTransformSelector.currentNode()
     pointListNode = self.pointListSelector.currentNode()
     self.logic.sendPlannedPoints(pointListNode, zTransformNode)
+
+  # Callback function to check if the node exists and call the update function
+  def onNeedleShapeChange(self, caller=None, event=None):
+    # Check if Registration transform is selected
+    if (self.zTransformSelector.currentNode() is not None):      
+      self.logic.updateNeedleShape(self.zTransformSelector.currentNode())
+      # Update header info
+      (timestamp, package_number, num_points, frame_id) = self.logic.getCurrentHeader()    
+      self.timeStampTextbox.setText(timestamp)
+      self.packageNumberTextbox.setText(package_number)
+      self.numberPointsTextbox.setText(num_points)
+      tipCoordinates = self.logic.getCurrentTipCoordinates()
+      if tipCoordinates is not None:
+        self.needleTipTextbox.setText(tipCoordinates)
     
 ################################################################################################################################################
 # Logic Class
@@ -369,57 +385,70 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     
   ### Logic setup ###################################################################
   def initializeNodes(self):  
-    # Create OpenIGTLink Server Nodes and initialize logic variables
-    self.serverNode = slicer.util.getFirstNodeByName('IGTLSmartNeedleServer')
-    if self.serverNode is None or self.serverNode.GetClassName() != 'vtkMRMLIGTLConnectorNode':
-      self.serverNode = slicer.vtkMRMLIGTLConnectorNode()
-      slicer.mrmlScene.AddNode(self.serverNode)
-      self.serverNode.SetName('IGTLSmartNeedleServer')      
+
+    # Create OpenIGTLink Client Node and initialize logic variables
+    self.clientNode = slicer.util.getFirstNodeByName('IGTLSmartNeedleClient')
+    if self.clientNode is None or self.clientNode.GetClassName() != 'vtkMRMLIGTLConnectorNode':
+      self.clientNode = slicer.vtkMRMLIGTLConnectorNode()
+      self.clientNode.SetName('IGTLSmartNeedleClient')      
+      slicer.mrmlScene.AddNode(self.clientNode)
     else:
-      self.serverNode.Stop()
-    # Create Transform nodes
+      self.clientNode.Stop()
+    # Create worldToZFrame transform node (internal)
     self.worldToZFrameTransformNode = slicer.util.getFirstNodeByName('WorldToZFrameTransform')
     if self.worldToZFrameTransformNode is None or self.worldToZFrameTransformNode.GetClassName() != 'vtkMRMLLinearTransformNode':
       self.worldToZFrameTransformNode = slicer.vtkMRMLLinearTransformNode()
-      slicer.mrmlScene.AddNode(self.worldToZFrameTransformNode)
+      self.worldToZFrameTransformNode.SetHideFromEditors(True)
       self.worldToZFrameTransformNode.SetName('WorldToZFrameTransform')
+      slicer.mrmlScene.AddNode(self.worldToZFrameTransformNode)
     # Create PointList node for planning
     self.pointListNode = slicer.util.getFirstNodeByName('Planning')
     if self.pointListNode is None or self.pointListNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
         self.pointListNode = slicer.vtkMRMLMarkupsFiducialNode()
-        slicer.mrmlScene.AddNode(self.pointListNode)
         self.pointListNode.SetName('Planning')
-    # Create PointListZ node for planning
+        slicer.mrmlScene.AddNode(self.pointListNode)
+    # Create PointListZ node for planning (internal)
     self.zFramePointListNode = slicer.util.getFirstNodeByName('PlanningZ')
     if self.zFramePointListNode is None or self.zFramePointListNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
       self.zFramePointListNode = slicer.vtkMRMLMarkupsFiducialNode()
-      slicer.mrmlScene.AddNode(self.zFramePointListNode)
+      self.zFramePointListNode.SetHideFromEditors(True)
       self.zFramePointListNode.SetName('PlanningZ')
+      slicer.mrmlScene.AddNode(self.zFramePointListNode)
+    displayNode = self.zFramePointListNode.GetDisplayNode()
+    if displayNode:
+      displayNode.SetVisibility(False)
     # Create NeedleShape message header
     self.needleShapeHeaderNode = slicer.util.getFirstNodeByName('NeedleShapeHeader')
     if self.needleShapeHeaderNode is None or self.needleShapeHeaderNode.GetClassName() != 'vtkMRMLTextNode':
       self.needleShapeHeaderNode = slicer.vtkMRMLTextNode()
-      slicer.mrmlScene.AddNode(self.needleShapeHeaderNode)
       self.needleShapeHeaderNode.SetName('NeedleShapeHeader')
+      slicer.mrmlScene.AddNode(self.needleShapeHeaderNode)
     # Create the NeedleShape points node
     self.needleShapePointsNode = slicer.util.getFirstNodeByName('NeedleShape')
     if self.needleShapePointsNode is None or self.needleShapePointsNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
       self.needleShapePointsNode = slicer.vtkMRMLMarkupsFiducialNode()
-      slicer.mrmlScene.AddNode(self.needleShapePointsNode)
       self.needleShapePointsNode.SetName('NeedleShape')
-    # Create the NeedleShapeZ points node
-    self.zFrameNeedleShapePointsNode = slicer.util.getFirstNodeByName('NeedleShapeZ')
-    if self.zFrameNeedleShapePointsNode is None or self.zFrameNeedleShapePointsNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
-      self.zFrameNeedleShapePointsNode = slicer.vtkMRMLMarkupsFiducialNode()
-      slicer.mrmlScene.AddNode(self.zFrameNeedleShapePointsNode)
-      self.zFrameNeedleShapePointsNode.SetName('NeedleShapeZ')
+      slicer.mrmlScene.AddNode(self.needleShapePointsNode)
+    displayNode = self.needleShapePointsNode.GetDisplayNode()
+    if displayNode:
+      displayNode.SetVisibility(False)
+    # Create the NeedleShapeZ points node (internal)
+    self.needleShapePointsZNode = slicer.util.getFirstNodeByName('NeedleShapeZ')
+    if self.needleShapePointsZNode is None or self.needleShapePointsZNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
+      self.needleShapePointsZNode = slicer.vtkMRMLMarkupsFiducialNode()
+      self.needleShapePointsZNode.SetHideFromEditors(True)
+      self.needleShapePointsZNode.SetName('NeedleShapeZ')
+      slicer.mrmlScene.AddNode(self.needleShapePointsZNode)
+    displayNode = self.needleShapePointsZNode.GetDisplayNode()
+    if displayNode:
+      displayNode.SetVisibility(False)
     # Create the Needle Model node
     self.needleModelNode = slicer.util.getFirstNodeByName('NeedleModel')
     if self.needleModelNode is None or self.needleModelNode.GetClassName() != 'vtkMRMLModelNode':
       self.needleModelNode = slicer.vtkMRMLModelNode()
-      slicer.mrmlScene.AddNode(self.needleModelNode)
       self.needleModelNode.SetName('NeedleModel')   
       self.needleModelNode.SetDisplayVisibility(True)
+      slicer.mrmlScene.AddNode(self.needleModelNode)
     # Check for Needle Model display node
     displayNode = self.needleModelNode.GetDisplayNode()
     if displayNode is None:
@@ -436,42 +465,43 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
   # Initialize parameter node with default settings
   def setDefaultParameters(self, parameterNode):
     # self.initialize()
+    if not parameterNode.GetParameter('IP'):
+      parameterNode.SetParameter('IP', 'localhost')
     if not parameterNode.GetParameter('Port'):
       parameterNode.SetParameter('Port', '18944')
     if not parameterNode.GetNodeReference('Planning'):
       parameterNode.SetNodeReferenceID('Planning', self.pointListNode.GetID())
       
-  # Restart server connection
-  def activateServer(self, serverPort):
-    self.serverNode.Stop()
-    self.serverNode.SetType(slicer.vtkMRMLIGTLConnectorNode.TypeServer)
-    self.serverNode.SetServerPort(int(serverPort))
+  # Restart client connection
+  def activateConnection(self, ip, port):
+    self.clientNode.Stop()
+    self.clientNode.SetType(slicer.vtkMRMLIGTLConnectorNode.TypeClient)
+    self.clientNode.SetServerPort(int(port))
+    self.clientNode.SetServerHostname(ip)
     # Register input and output nodes
     if self.needleShapeHeaderNode is not None:
-      self.serverNode.RegisterIncomingMRMLNode(self.needleShapeHeaderNode)
-    if self.zFrameNeedleShapePointsNode is not None:
-      self.serverNode.RegisterIncomingMRMLNode(self.zFrameNeedleShapePointsNode)
-    if self.zFramePointListNode is not None:
-      self.serverNode.RegisterOutgoingMRMLNode(self.zFramePointListNode)
-    self.serverNode.Start()
+      self.clientNode.RegisterIncomingMRMLNode(self.needleShapeHeaderNode)
+    if self.needleShapePointsZNode is not None:
+      self.clientNode.RegisterIncomingMRMLNode(self.needleShapePointsZNode)
+    self.clientNode.Start()
           
-  def deactivateServer(self):
-    self.serverNode.Stop()
+  def deactivateConnection(self):
+    self.clientNode.Stop()
 
   # Close client connection
   # Remove OpenIGTLink Client Node from mrmlScene
   def closeConnection(self):
-    if self.serverNode is not None:
+    if self.clientNode is not None:
       try:
-        self.serverNode.Stop()
-        slicer.mrmlScene.RemoveNode(self.serverNode)
+        self.clientNode.Stop()
+        slicer.mrmlScene.RemoveNode(self.clientNode)
         return True
       except:
         print('Error closing OpenIGTLink client node')
         return False
       
   def getConnectionStatus(self):
-    return self.serverNode.GetState()
+    return self.clientNode.GetState()
   
   def getNumberOfPoints(self, pointListNode):
     if pointListNode is not None:
@@ -524,12 +554,16 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     self.worldToZFrameTransformNode.SetMatrixTransformToParent(worldToZFrame)
     # Make a copy of ZFrame Points coordinates
     self.zFramePointListNode.CopyContent(pointListNode)
+    displayNode = self.zFramePointListNode.GetDisplayNode()
+    if displayNode:
+      displayNode.SetVisibility(False)
     # Apply zTransform to points
     self.zFramePointListNode.SetAndObserveTransformNodeID(self.worldToZFrameTransformNode.GetID())
     self.zFramePointListNode.HardenTransform()
-    # Push to IGTLink Server
-    self.serverNode.RegisterOutgoingMRMLNode(self.zFramePointListNode)
-    self.serverNode.PushNode(self.zFramePointListNode)
+    # Push to IGTLink Connection
+    self.clientNode.RegisterOutgoingMRMLNode(self.zFramePointListNode)
+    self.clientNode.PushNode(self.zFramePointListNode)
+    self.clientNode.UnregisterOutgoingMRMLNode(self.zFramePointListNode)
     return True
 
   # Update needle model from NeedleShape POINT_ARRAY message
@@ -538,11 +572,15 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
       print('Select a ZTransform first')
       return False
     # Make a copy of NeedleShape Z points 
-    self.needleShapePointsNode.CopyContent(self.zFrameNeedleShapePointsNode)
-    # Apply zFrame to World transform to needle shape points
+    self.needleShapePointsNode.CopyContent(self.needleShapePointsZNode)
+    displayNode = self.needleShapePointsNode.GetDisplayNode()
+    if displayNode:
+      displayNode.SetVisibility(False)
+
+    # Apply zFrameToWorld transform to needle shape points
     self.needleShapePointsNode.SetAndObserveTransformNodeID(zTransformNode.GetID())
     self.needleShapePointsNode.HardenTransform()
     # Update curve if more than 2 points
-    if self.zFrameNeedleShapePointsNode.GetNumberOfControlPoints() >= 2:
+    if self.needleShapePointsNode.GetNumberOfControlPoints() >= 2:
       self.curveMaker.updateCurve()
       return True

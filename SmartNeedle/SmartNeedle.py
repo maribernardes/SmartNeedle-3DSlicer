@@ -431,7 +431,7 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
       slicer.mrmlScene.AddNode(self.needleShapePointsNode)
     displayNode = self.needleShapePointsNode.GetDisplayNode()
     if displayNode:
-      displayNode.SetVisibility(False)
+      displayNode.SetVisibility(True)
     # Create the NeedleShapeZ points node (internal)
     self.needleShapePointsZNode = slicer.util.getFirstNodeByName('NeedleShapeZ')
     if self.needleShapePointsZNode is None or self.needleShapePointsZNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
@@ -513,9 +513,9 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     if pointListNode is not None:
       N = pointListNode.GetNumberOfControlPoints()
       if N>=1:
-        pointListNode.SetNthControlPointLabel(0, 'ENTRY')
+        pointListNode.SetNthControlPointLabel(0, 'TARGET')
       if N>=2:
-        pointListNode.SetNthControlPointLabel(1, 'TARGET')
+        pointListNode.SetNthControlPointLabel(1, 'ENTRY')
       if pointListNode.GetNumberOfDefinedControlPoints()>=2:
         pointListNode.SetFixedNumberOfControlPoints(2)
   

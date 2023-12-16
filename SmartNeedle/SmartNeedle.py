@@ -148,7 +148,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.timeStampTextbox.setReadOnly(True)
     self.timeStampTextbox.setStyleSheet('background-color: transparent; border: no border;')
     self.timeStampTextbox.toolTip = 'Timestamp from last shape measurement'
-    sensingFormLayout.addRow('Needle shape timestamp:', self.timeStampTextbox)
+    sensingFormLayout.addRow('Timestamp:', self.timeStampTextbox)
 
     self.packageNumberTextbox = qt.QLineEdit('---')
     self.packageNumberTextbox.setReadOnly(True)
@@ -167,7 +167,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.needleTipTextbox.setReadOnly(True)
     self.needleTipTextbox.setStyleSheet('background-color: transparent; border: no border;')
     self.needleTipTextbox.toolTip = 'Needle tip current position'
-    sensingFormLayout.addRow('Tip coordinates (RAS):', self.needleTipTextbox)
+    sensingFormLayout.addRow('Tip coordinates:', self.needleTipTextbox)
 
 
     ## Save insertion collapsible button       
@@ -181,8 +181,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     saveHBoxLayout = qt.QHBoxLayout()    
     self.insertionNameTextbox = qt.QLineEdit('Insertion1')
     self.insertionNameTextbox.setReadOnly(False)
-    self.insertionNameTextbox.setMaximumWidth(250)
-    saveHBoxLayout.addWidget(qt.QLabel('Name:'))    
+    saveHBoxLayout.addWidget(qt.QLabel('Insertion name:'))    
     saveHBoxLayout.addWidget(self.insertionNameTextbox)    
     self.copyButton = qt.QPushButton('Save copy')
     self.copyButton.toolTip = 'Start OpenIGTLink client'
@@ -392,9 +391,9 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       tipCoordinates = self.logic.getCurrentTipCoordinates()
       print('Time: %s / Tip (RAS): %s' %(timestamp,tipCoordinates))
       if tipCoordinates is not None:
-        self.needleTipTextbox.setText(tipCoordinates)
+        self.needleTipTextbox.setText(tipCoordinates )
       else:
-        self.needleTipTextbox.setText('')
+        self.needleTipTextbox.setText('(---, ---, ---)')
   
   def saveInsertion(self):
     name = self.insertionNameTextbox.text.strip()

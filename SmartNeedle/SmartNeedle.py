@@ -123,6 +123,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.pointListSelector.setNodeSelectorVisible(False)
     self.pointListSelector.markupsPlaceWidget().setPlaceMultipleMarkups(True)
     self.pointListSelector.defaultNodeColor = qt.QColor(170,0,0)
+    self.pointListSelector.setMaximumHeight(87)
     self.pointListSelector.tableWidget().show()
     self.pointListSelector.toolTip = 'Select 2 points: ENTRY and TARGET'
     # self.pointListSelector.markupsPlaceWidget().setPlaceModePersistency(True)
@@ -167,6 +168,28 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.needleTipTextbox.setStyleSheet('background-color: transparent; border: no border;')
     self.needleTipTextbox.toolTip = 'Needle tip current position'
     sensingFormLayout.addRow('Tip coordinates (RAS):', self.needleTipTextbox)
+
+
+    ## Save insertion collapsible button       
+    ####################################    
+
+    saveCollapsibleButton = ctk.ctkCollapsibleButton()
+    saveCollapsibleButton.text = 'Save insertion'    
+    self.layout.addWidget(saveCollapsibleButton)
+    saveFormLayout = qt.QFormLayout(saveCollapsibleButton)
+    
+    saveHBoxLayout = qt.QHBoxLayout()    
+    self.insertionNameTextbox = qt.QLineEdit('Insertion1')
+    self.insertionNameTextbox.setReadOnly(False)
+    self.insertionNameTextbox.setMaximumWidth(250)
+    saveHBoxLayout.addWidget(qt.QLabel('Name:'))    
+    saveHBoxLayout.addWidget(self.insertionNameTextbox)    
+    self.copyButton = qt.QPushButton('Save copy')
+    self.copyButton.toolTip = 'Start OpenIGTLink client'
+    self.copyButton.enabled = True
+    saveHBoxLayout.addWidget(self.copyButton)
+    saveFormLayout.addRow(saveHBoxLayout)    
+    
     self.layout.addStretch(1)
     
     ####################################
@@ -203,6 +226,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.startButton.connect('clicked(bool)', self.startConnection)
     self.stopButton.connect('clicked(bool)', self.stopConnection)
     self.sendButton.connect('clicked(bool)', self.sendPoints)
+    self.copyButton.connect('clicked(bool)', self.saveInsertion)
     self.pointListSelector.connect('updateFinished()', self.onPointListChanged)
 
     # Make sure parameter node is initialized (needed for module reload)
@@ -332,7 +356,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     elif (connectionStatus == slicer.vtkMRMLIGTLConnectorNode.StateConnected):       # 2 - ON
       self.statusLabel.setStyleSheet('background-color: lightgreen; border: 1px solid black;')
       self.statusLabel.setText('Connected to server... Ready to send/receive!')
-    else:                                                                                 # ANY OTHER STATE
+    else:                                                                            # ANY OTHER STATE
       self.statusLabel.setStyleSheet('background-color: pink; border: 1px solid black;')
       self.statusLabel.setText('Error with OpenIGTLink server node')
 
@@ -350,7 +374,6 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.logic.deactivateConnection()
     
   def sendPoints(self):
-    print('UI: sendPoints()')
     # Get current transform node
     zTransformNode = self.zTransformSelector.currentNode()
     pointListNode = self.pointListSelector.currentNode()
@@ -367,8 +390,16 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.packageNumberTextbox.setText(package_number)
       self.numberPointsTextbox.setText(num_points)
       tipCoordinates = self.logic.getCurrentTipCoordinates()
+      print('Tip coordinates = %s' %tipCoordinates)
       if tipCoordinates is not None:
         self.needleTipTextbox.setText(tipCoordinates)
+      else:
+        self.needleTipTextbox.setText('')
+  
+  def saveInsertion(self):
+    name = self.insertionNameTextbox.text.strip()
+    self.logic.copyInsertionNodes(name)
+    print('Saved %s' %name)
     
 ################################################################################################################################################
 # Logic Class
@@ -387,73 +418,74 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
   def initializeNodes(self):  
 
     # Create OpenIGTLink Client Node and initialize logic variables
-    self.clientNode = slicer.util.getFirstNodeByName('IGTLSmartNeedleClient')
-    if self.clientNode is None or self.clientNode.GetClassName() != 'vtkMRMLIGTLConnectorNode':
+    self.clientNode = slicer.util.getFirstNodeByName('IGTLSmartNeedleClient', className='vtkMRMLIGTLConnectorNode')
+    if self.clientNode is None:
       self.clientNode = slicer.vtkMRMLIGTLConnectorNode()
       self.clientNode.SetName('IGTLSmartNeedleClient')      
       slicer.mrmlScene.AddNode(self.clientNode)
     else:
       self.clientNode.Stop()
     # Create worldToZFrame transform node (internal)
-    self.worldToZFrameTransformNode = slicer.util.getFirstNodeByName('WorldToZFrameTransform')
-    if self.worldToZFrameTransformNode is None or self.worldToZFrameTransformNode.GetClassName() != 'vtkMRMLLinearTransformNode':
+    self.worldToZFrameTransformNode = slicer.util.getFirstNodeByName('WorldToZFrameTransform', className='vtkMRMLLinearTransformNode')
+    if self.worldToZFrameTransformNode is None:
       self.worldToZFrameTransformNode = slicer.vtkMRMLLinearTransformNode()
       self.worldToZFrameTransformNode.SetHideFromEditors(True)
       self.worldToZFrameTransformNode.SetName('WorldToZFrameTransform')
       slicer.mrmlScene.AddNode(self.worldToZFrameTransformNode)
     # Create PointList node for planning
-    self.pointListNode = slicer.util.getFirstNodeByName('Planning')
-    if self.pointListNode is None or self.pointListNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
+    self.pointListNode = slicer.util.getFirstNodeByName('Planning', className='vtkMRMLMarkupsFiducialNode')
+    if self.pointListNode is None:
         self.pointListNode = slicer.vtkMRMLMarkupsFiducialNode()
         self.pointListNode.SetName('Planning')
         slicer.mrmlScene.AddNode(self.pointListNode)
     # Create PointListZ node for planning (internal)
-    self.zFramePointListNode = slicer.util.getFirstNodeByName('PlanningZ')
-    if self.zFramePointListNode is None or self.zFramePointListNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
+    self.zFramePointListNode = slicer.util.getFirstNodeByName('PlanningZ', className='vtkMRMLMarkupsFiducialNode')
+    if self.zFramePointListNode is None:
       self.zFramePointListNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.zFramePointListNode.SetHideFromEditors(True)
       self.zFramePointListNode.SetName('PlanningZ')
       slicer.mrmlScene.AddNode(self.zFramePointListNode)
-    displayNode = self.zFramePointListNode.GetDisplayNode()
-    if displayNode:
-      displayNode.SetVisibility(False)
+    displayNodeZPointList = self.zFramePointListNode.GetDisplayNode()
+    if displayNodeZPointList:
+      displayNodeZPointList.SetVisibility(False)
     # Create NeedleShape message header
-    self.needleShapeHeaderNode = slicer.util.getFirstNodeByName('NeedleShapeHeader')
-    if self.needleShapeHeaderNode is None or self.needleShapeHeaderNode.GetClassName() != 'vtkMRMLTextNode':
+    self.needleShapeHeaderNode = slicer.util.getFirstNodeByName('NeedleShapeHeader', className='vtkMRMLTextNode')
+    if self.needleShapeHeaderNode is None:
       self.needleShapeHeaderNode = slicer.vtkMRMLTextNode()
       self.needleShapeHeaderNode.SetName('NeedleShapeHeader')
       slicer.mrmlScene.AddNode(self.needleShapeHeaderNode)
     # Create the NeedleShape points node
-    self.needleShapePointsNode = slicer.util.getFirstNodeByName('NeedleShape')
-    if self.needleShapePointsNode is None or self.needleShapePointsNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
+    self.needleShapePointsNode = slicer.util.getFirstNodeByName('NeedleShape', className='vtkMRMLMarkupsFiducialNode')
+    if self.needleShapePointsNode is None:
       self.needleShapePointsNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.needleShapePointsNode.SetName('NeedleShape')
       slicer.mrmlScene.AddNode(self.needleShapePointsNode)
-    displayNode = self.needleShapePointsNode.GetDisplayNode()
-    if displayNode:
-      displayNode.SetVisibility(True)
+    displayNodeNeedleShapePoints = self.needleShapePointsNode.GetDisplayNode()
+    if displayNodeNeedleShapePoints:
+      displayNodeNeedleShapePoints.SetVisibility(True)
     # Create the NeedleShapeZ points node (internal)
-    self.needleShapePointsZNode = slicer.util.getFirstNodeByName('NeedleShapeZ')
-    if self.needleShapePointsZNode is None or self.needleShapePointsZNode.GetClassName() != 'vtkMRMLMarkupsFiducialNode':
+    self.needleShapePointsZNode = slicer.util.getFirstNodeByName('NeedleShapeZ', className='vtkMRMLMarkupsFiducialNode')
+    if self.needleShapePointsZNode is None:
       self.needleShapePointsZNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.needleShapePointsZNode.SetHideFromEditors(True)
       self.needleShapePointsZNode.SetName('NeedleShapeZ')
       slicer.mrmlScene.AddNode(self.needleShapePointsZNode)
-    displayNode = self.needleShapePointsZNode.GetDisplayNode()
-    if displayNode:
-      displayNode.SetVisibility(False)
+    displayNodeNeedleShapeZPoints = self.needleShapePointsZNode.GetDisplayNode()
+    if displayNodeNeedleShapeZPoints:
+      displayNodeNeedleShapeZPoints.SetVisibility(False)
     # Create the Needle Model node
-    self.needleModelNode = slicer.util.getFirstNodeByName('NeedleModel')
-    if self.needleModelNode is None or self.needleModelNode.GetClassName() != 'vtkMRMLModelNode':
+    self.needleModelNode = slicer.util.getFirstNodeByName('NeedleModel', className='vtkMRMLModelNode')
+    if self.needleModelNode is None:
       self.needleModelNode = slicer.vtkMRMLModelNode()
       self.needleModelNode.SetName('NeedleModel')   
       self.needleModelNode.SetDisplayVisibility(True)
       slicer.mrmlScene.AddNode(self.needleModelNode)
     # Check for Needle Model display node
-    displayNode = self.needleModelNode.GetDisplayNode()
-    if displayNode is None:
-        displayNode = slicer.vtkMRMLModelDisplayNode()
-        self.needleModelNode.SetAndObserveDisplayNodeID(displayNode.GetID())
+    displayNodeNeedleModel = self.needleModelNode.GetDisplayNode()
+    if displayNodeNeedleModel is None:
+        displayNodeNeedleModel = slicer.vtkMRMLModelDisplayNode()
+        self.needleModelNode.SetAndObserveDisplayNodeID(displayNodeNeedleModel.GetID())
+    displayNodeNeedleModel.SetVisibility2D(True)
     # Get CurveMaker module logic
     self.curveMaker.SourceNode = self.needleShapePointsNode
     self.curveMaker.DestinationNode = self.needleModelNode
@@ -560,6 +592,7 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     # Apply zTransform to points
     self.zFramePointListNode.SetAndObserveTransformNodeID(self.worldToZFrameTransformNode.GetID())
     self.zFramePointListNode.HardenTransform()
+    print('Sending (zFrame): Entry= %s, Target=%s' %(self.zFramePointListNode.GetNthControlPointPosition(0),self.zFramePointListNode.GetNthControlPointPosition(1)))
     # Push to IGTLink Connection
     self.clientNode.RegisterOutgoingMRMLNode(self.zFramePointListNode)
     self.clientNode.PushNode(self.zFramePointListNode)
@@ -584,3 +617,17 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     if self.needleShapePointsNode.GetNumberOfControlPoints() >= 2:
       self.curveMaker.updateCurve()
       return True
+    
+  def copyInsertionNodes(self, name):
+    # Copy planning points
+    copyPlanningPoints = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', name+'_Planning')
+    copyPlanningPoints.CopyContent(self.pointListNode)    
+    displayNodePlanning = copyPlanningPoints.GetDisplayNode()
+    if displayNodePlanning:
+      displayNodePlanning.SetVisibility(False)
+    # Copy needle shape points
+    copyShapePoints = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', name+'_NeedleShape')
+    copyShapePoints.CopyContent(self.needleShapePointsNode)
+    # Copy needle shape model
+    copyShapeModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', name+'_NeedleModel')
+    copyShapeModel.CopyContent(self.needleModelNode)

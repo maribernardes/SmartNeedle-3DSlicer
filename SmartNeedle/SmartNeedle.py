@@ -390,7 +390,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.packageNumberTextbox.setText(package_number)
       self.numberPointsTextbox.setText(num_points)
       tipCoordinates = self.logic.getCurrentTipCoordinates()
-      print('Tip coordinates = %s' %tipCoordinates)
+      print('Time: %s / Tip (RAS): %s' %(timestamp,tipCoordinates))
       if tipCoordinates is not None:
         self.needleTipTextbox.setText(tipCoordinates)
       else:
@@ -554,7 +554,6 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
   # Extract information from NeedleShapeHeader STRING message
   def getCurrentHeader(self):
     headerText = self.needleShapeHeaderNode.GetText()
-    print(headerText)
     # Split the text using the ';' delimiter
     parts = headerText.split(';')
     # Extract the individual values and assign them to separate variables

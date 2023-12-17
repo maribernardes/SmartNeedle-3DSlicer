@@ -218,6 +218,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # (in the selected parameter node).
     self.ipTextbox.connect('textChanged', self.updateParameterNodeFromGUI)
     self.portTextbox.connect('textChanged', self.updateParameterNodeFromGUI)
+    self.insertionNameTextbox.connect('textChanged', self.updateParameterNodeFromGUI)
     self.zTransformSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.updateParameterNodeFromGUI)
     
     # Connect Qt widgets to event calls
@@ -302,8 +303,10 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Update node selectors and input boxes and sliders
     self.ipTextbox.setText(self._parameterNode.GetParameter('IP'))
     self.portTextbox.setText(self._parameterNode.GetParameter('Port'))
+    self.insertionNameTextbox.setText(self._parameterNode.GetParameter('InsertionName'))
     self.zTransformSelector.setCurrentNode(self._parameterNode.GetNodeReference('ZTransform'))
     self.pointListSelector.setCurrentNode(self._parameterNode.GetNodeReference('Planning'))
+    
     self.updateGUI()
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -318,6 +321,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Update paramenters_nodes
     self._parameterNode.SetParameter('IP', self.ipTextbox.text.strip())
     self._parameterNode.SetParameter('Port', self.portTextbox.text.strip())
+    self._parameterNode.SetParameter('InsertionName', self.insertionNameTextbox.text.strip())
     self._parameterNode.SetNodeReferenceID('ZTransform', self.zTransformSelector.currentNodeID)
     # All paramenter_nodes updates are done
     self._parameterNode.EndModify(wasModified)
@@ -500,6 +504,8 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
       parameterNode.SetParameter('IP', 'localhost')
     if not parameterNode.GetParameter('Port'):
       parameterNode.SetParameter('Port', '18944')
+    if not parameterNode.GetParameter('InsertionName'):
+      parameterNode.SetParameter('InsertionName', 'Insertion1')
     if not parameterNode.GetNodeReference('Planning'):
       parameterNode.SetNodeReferenceID('Planning', self.pointListNode.GetID())
       

@@ -123,7 +123,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.pointListSelector.setNodeSelectorVisible(False)
     self.pointListSelector.markupsPlaceWidget().setPlaceMultipleMarkups(True)
     self.pointListSelector.defaultNodeColor = qt.QColor(170,0,0)
-    self.pointListSelector.setMaximumHeight(87)
+    self.pointListSelector.setMaximumHeight(90)
     self.pointListSelector.tableWidget().show()
     self.pointListSelector.toolTip = 'Select 2 points: ENTRY and TARGET'
     # self.pointListSelector.markupsPlaceWidget().setPlaceModePersistency(True)
@@ -377,6 +377,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.logic.deactivateConnection()
     
   def sendPoints(self):
+    print('UI: sendPoints()')
     # Get current transform node
     zTransformNode = self.zTransformSelector.currentNode()
     pointListNode = self.pointListSelector.currentNode()
@@ -400,6 +401,7 @@ class SmartNeedleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.needleTipTextbox.setText('(---, ---, ---)')
   
   def saveInsertion(self):
+    print('UI: saveInsertion()')
     name = self.insertionNameTextbox.text.strip()
     self.logic.copyInsertionNodes(name)
     print('Saved %s' %name)
@@ -484,11 +486,13 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
       self.needleModelNode.SetDisplayVisibility(True)
       slicer.mrmlScene.AddNode(self.needleModelNode)
     # Check for Needle Model display node
-    displayNodeNeedleModel = self.needleModelNode.GetDisplayNode()
-    if displayNodeNeedleModel is None:
-        displayNodeNeedleModel = slicer.vtkMRMLModelDisplayNode()
-        self.needleModelNode.SetAndObserveDisplayNodeID(displayNodeNeedleModel.GetID())
-    displayNodeNeedleModel.SetVisibility2D(True)
+    self.displayNodeNeedleModel = self.needleModelNode.GetDisplayNode()
+    if self.displayNodeNeedleModel is None:
+        self.displayNodeNeedleModel = slicer.vtkMRMLModelDisplayNode()
+        self.needleModelNode.SetAndObserveDisplayNodeID(self.displayNodeNeedleModel.GetID())
+    self.displayNodeNeedleModel.SetVisibility(True)
+    self.displayNodeNeedleModel.SetVisibility3D(True)
+    self.displayNodeNeedleModel.SetVisibility2D(True)
     # Get CurveMaker module logic
     self.curveMaker.SourceNode = self.needleShapePointsNode
     self.curveMaker.DestinationNode = self.needleModelNode
@@ -596,7 +600,8 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     # Apply zTransform to points
     self.zFramePointListNode.SetAndObserveTransformNodeID(self.worldToZFrameTransformNode.GetID())
     self.zFramePointListNode.HardenTransform()
-    print('Sending (zFrame): Entry= %s, Target=%s' %(self.zFramePointListNode.GetNthControlPointPosition(0),self.zFramePointListNode.GetNthControlPointPosition(1)))
+    print('Selected (RAS): Target= %s, Entry=%s' %(self.pointListNode.GetNthControlPointPosition(0),self.pointListNode.GetNthControlPointPosition(1)))
+    print('Sending (zFrame): Target= %s, Entry=%s' %(self.zFramePointListNode.GetNthControlPointPosition(0),self.zFramePointListNode.GetNthControlPointPosition(1)))
     # Push to IGTLink Connection
     self.clientNode.RegisterOutgoingMRMLNode(self.zFramePointListNode)
     self.clientNode.PushNode(self.zFramePointListNode)
@@ -620,6 +625,8 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     # Update curve if more than 2 points
     if self.needleShapePointsNode.GetNumberOfControlPoints() >= 2:
       self.curveMaker.updateCurve()
+      self.displayNodeNeedleModel.SetVisibility3D(True)
+      self.displayNodeNeedleModel.SetVisibility2D(True)      
       return True
     
   def copyInsertionNodes(self, name):
@@ -635,3 +642,11 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
     # Copy needle shape model
     copyShapeModel = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', name+'_NeedleModel')
     copyShapeModel.CopyContent(self.needleModelNode)
+
+    target = self.pointListNode.GetNthControlPointPosition(0)
+    entry = self.pointListNode.GetNthControlPointPosition(1)
+    tip = self.getCurrentTipCoordinates()
+    print('***** %s *****' %name)
+    print('Target = (%f, %f, %f)' %(target[0], target[1], target[2]))
+    print('Entry = (%f, %f, %f)' %(entry[0], entry[1], entry[2]))
+    print('Tip = (%f, %f, %f)' %(tip[0], tip[1], tip[2]))

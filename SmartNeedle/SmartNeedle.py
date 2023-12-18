@@ -443,6 +443,9 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
         self.pointListNode = slicer.vtkMRMLMarkupsFiducialNode()
         self.pointListNode.SetName('Planning')
         slicer.mrmlScene.AddNode(self.pointListNode)
+    displayNodePointList = self.pointListNode.GetDisplayNode()
+    if displayNodePointList:
+      displayNodePointList.SetGlyphScale(1.5)   
     # Create PointListZ node for planning (internal)
     self.zFramePointListNode = slicer.util.getFirstNodeByName('PlanningZ', className='vtkMRMLMarkupsFiducialNode')
     if self.zFramePointListNode is None:
@@ -452,6 +455,7 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
       slicer.mrmlScene.AddNode(self.zFramePointListNode)
     displayNodeZPointList = self.zFramePointListNode.GetDisplayNode()
     if displayNodeZPointList:
+      displayNodeZPointList.SetGlyphScale(1.5)   
       displayNodeZPointList.SetVisibility(False)
     # Create NeedleShape message header
     self.needleShapeHeaderNode = slicer.util.getFirstNodeByName('NeedleShapeHeader', className='vtkMRMLTextNode')
@@ -467,6 +471,8 @@ class SmartNeedleLogic(ScriptedLoadableModuleLogic):
       slicer.mrmlScene.AddNode(self.needleShapePointsNode)
     displayNodeNeedleShapePoints = self.needleShapePointsNode.GetDisplayNode()
     if displayNodeNeedleShapePoints:
+      displayNodeNeedleShapePoints.SetGlyphScale(1.5) 
+      displayNodeNeedleShapePoints.SetTextScale(0)
       displayNodeNeedleShapePoints.SetVisibility(True)
     # Create the NeedleShapeZ points node (internal)
     self.needleShapePointsZNode = slicer.util.getFirstNodeByName('NeedleShapeZ', className='vtkMRMLMarkupsFiducialNode')
